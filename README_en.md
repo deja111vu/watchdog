@@ -2,6 +2,8 @@
 for tracking the normal operation of a PC.
 It is useful for receiving notifications if the PC freezes or shuts down.
 
+<img src=https://github.com/deja111vu/watchdog/blob/main/screenshot-1.png>
+
 Script Installation
 
 1. Download all files to your computer.
@@ -25,5 +27,6 @@ Error_message - Has a pre-set error message indicating the name of the computer 
 8. Run Autostart_setup.bat to install the task in the Task Scheduler.
 Settings: Pings are sent every 10 minutes by default.
 To change the ping sending period, you must change the number in the /mo 10 key of the schtasks task installation command in step 8, and also adjust the settings of the Setup node in n8n.
+
 
 9. If you need to stop the watchdog timer, run Autostart_stop.bat to remove the task from the Task Scheduler.
