@@ -1,0 +1,520 @@
+{
+  "name": "Watchdog_checker",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "watchdog",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        -176
+      ],
+      "id": "73997f59-e2c8-4bf2-b324-6016541ccc16",
+      "name": "Webhook",
+      "webhookId": "6b7aed4c-55b7-432d-9539-87e40c3bfb88"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "watchdog",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        -176
+      ],
+      "id": "b5d6ca30-672b-4db3-b681-7b1ad790243d",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        -176
+      ],
+      "id": "5044be20-61c7-4b83-8311-ed3c85d14dc5",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "fileSelector": "watchdog",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        752,
+        -176
+      ],
+      "id": "a9d502fe-3bf9-486e-bec1-3924bfd7586e",
+      "name": "Read/Write Files from Disk1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bec9d45e-fd65-4e72-aec7-2df7001171df",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "work",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1232,
+        -176
+      ],
+      "id": "f4f6fdd9-a0cf-46c4-bd54-86169b6215ea",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "fromJson",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        912,
+        -176
+      ],
+      "id": "6b0f33ef-8bd3-4985-a34a-176e4daf9ff5",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Сравнивает заданную дату/время + задержку с текущим временем,\n * используя данные из входящего массива 'items' (стандарт n8n).\n */\nfunction compareTimeWithDelay() {\n    \n    // =================================================================\n    // 🔥 ДОСТУП К ДАННЫМ, АДАПТИРОВАННЫЙ ДЛЯ N8N 🔥\n    // N8n передает данные в глобальную переменную 'items'.\n    // Мы берем первый элемент (items[0].json) и ищем в нем нашу структуру.\n    // =================================================================\n    \n    // Входящая структура данных: [ { \"data\": [ { \"time\": \"...\", \"delay\": \"...\" } ] } ]\n    \n    const inputItem = items[0] ? items[0].json : null;\n    \n    // Получаем массив 'data'\n    const dataArray = inputItem && inputItem.data && Array.isArray(inputItem.data) ? inputItem.data : [];\n\n    // Получаем первый элемент из массива 'data'\n    const dataObject = dataArray.length > 0 ? dataArray[0] : null;\n\n    // Извлекаем строку даты/времени из 'time'.\n    const dateTimeString = dataObject && typeof dataObject.time === 'string' ? dataObject.time : ''; \n    \n    // Извлекаем значение задержки из 'delay'.\n    const delayMinutes = dataObject && (typeof dataObject.delay === 'string' || typeof dataObject.delay === 'number') ? dataObject.delay : 0;\n    \n    // -----------------------------------------------------------------\n\n    // --- Вспомогательная функция для возврата ошибки в требуемом формате ---\n    // N8n ожидает массив объектов, где каждый объект имеет ключ 'json'\n    const returnError = (errorMessage) => {\n        console.log(`Ошибка: ${errorMessage}. Получено: ${dateTimeString} | ${delayMinutes}`);\n        // Возвращаем объект, обернутый в 'json'\n        return [{ json: { status: 'down', error_message: errorMessage } }];\n    };\n\n    // --- ПРОВЕРКА И ПАРСИНГ ---\n    \n    // Проверка формата даты (ДД.ММ.ГГГГ-ЧЧ:ММ)\n    if (dateTimeString === '' || !dateTimeString.includes('-') || !dateTimeString.includes('.')) {\n        return returnError(`Неверный формат даты/времени. Ожидается ДД.ММ.ГГГГ-ЧЧ:ММ.`); \n    }\n\n    // Проверка задержки \n    const delay = Number(delayMinutes);\n    if (isNaN(delay)) {\n        return returnError('Значение задержки не является числом.');\n    }\n    \n    // --- ВЫЧИСЛЕНИЯ ВРЕМЕНИ ---\n\n    try {\n        const [datePart, timePart] = dateTimeString.split('-');\n        const [day, month, year] = datePart.split('.').map(Number);\n        const [hour, minute] = timePart.split(':').map(Number); \n\n        // Создаем Date (месяц 0-индексирован)\n        const targetDate = new Date(year, month - 1, day, hour, minute, 0, 0);\n\n        if (isNaN(targetDate.getTime())) {\n            return returnError(`Ошибка парсинга даты: ${dateTimeString}. Проверьте правильность ДД, ММ, ГГГГ.`);\n        }\n\n        // Вычисляем время с задержкой в миллисекундах\n        const delayMilliseconds = delay * 60 * 1000;\n        const targetTimeWithDelay = targetDate.getTime() + delayMilliseconds;\n\n        // Текущее время\n        const currentTime = Date.now(); \n\n        // --- СРАВНЕНИЕ И ФОРМИРОВАНИЕ ВЫХОДА ---\n        \n        let status;\n        if (targetTimeWithDelay > currentTime) {\n            status = 'work'; // work = полученное время + задержка > текущего времени\n        } else {\n            status = 'down'; // down = полученное время + задержка <= текущего времени\n        }\n        \n        // 🔥 Возвращаем результат, обернутый в 'json' (стандарт n8n) 🔥\n        return [{ json: { status: status } }];\n\n    } catch (e) {\n        return returnError(`Непредвиденная ошибка в скрипте: ${e.message}`);\n    }\n}\n\n// 🚀 ЯВНЫЙ ВОЗВРАТ РЕЗУЛЬТАТА\nreturn compareTimeWithDelay();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        -176
+      ],
+      "id": "b0671f14-6237-424c-8a7b-6812851e79af",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $('Setup').item.json.Bot_token }}/sendMessage?chat_id={{ $('Setup').item.json.Telegram_Chat_ID }}&text={{ $('Setup').item.json.Error_message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1504,
+        144
+      ],
+      "id": "05ba3e51-07ba-4de2-baef-d1991a9bc719",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8608c83b-8c75-48e1-8e3a-154a66c0533a",
+              "name": "=time",
+              "value": "={{$now.format('dd.MM.yyyy-T') }}",
+              "type": "string"
+            },
+            {
+              "id": "2565d970-8a60-4b6b-a7f9-66dc25907a97",
+              "name": "delay",
+              "value": "13",
+              "type": "string"
+            },
+            {
+              "id": "2306acfe-3e44-4bda-851f-e5fd4ef54b34",
+              "name": "Bot_token",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a601c211-1e98-4786-bc51-c32bc8c84330",
+              "name": "Telegram_Chat_ID",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "c4d0ba9c-56e8-4c39-a639-f104a66c6562",
+              "name": "Error_message",
+              "value": "=🚨 WATCHDOG ALERT! 🚨\n{{ $json.query.computer }} не отвечает",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        592,
+        -176
+      ],
+      "id": "a556c412-7495-421a-810d-e024a085b2e9",
+      "name": "Setup"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "watchdog",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        944,
+        128
+      ],
+      "id": "a00fdadc-2263-48b3-a16f-10ad49a515d6",
+      "name": "Read/Write Files from Disk2"
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        768,
+        128
+      ],
+      "id": "fc4e7ede-2545-482e-bff6-f5d2fef4be49",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        400,
+        128
+      ],
+      "id": "6113a881-b02b-4a82-a401-2ba25389f797",
+      "name": "Click for setup and test"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8608c83b-8c75-48e1-8e3a-154a66c0533a",
+              "name": "=time",
+              "value": "={{$now.format('dd.MM.yyyy-T') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        592,
+        128
+      ],
+      "id": "d0ff6ecd-e838-4da6-97b6-8896b5e83242",
+      "name": "Timer Set"
+    },
+    {
+      "parameters": {
+        "content": "## Set the start timer file \n## Установка начального файла таймера\n",
+        "height": 272,
+        "width": 704
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        368,
+        32
+      ],
+      "id": "edda4862-8cc5-48fe-b853-871ab568f2a0",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Check the last set time\n## Проверка последнего установленного времени",
+        "height": 288,
+        "width": 976,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        368,
+        -288
+      ],
+      "id": "c983f6d1-6ed9-472a-8fbf-73653b1caaf2",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Error message\n## Уведомление об ошибке",
+        "height": 272,
+        "width": 320,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        32
+      ],
+      "id": "1a187051-92ed-434e-a4e3-0e707bbc072f",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Set the new time\n## Установка новой временной метки\n",
+        "height": 288,
+        "width": 320,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        -288
+      ],
+      "id": "17814a7a-044d-4333-82e0-8e06824fd945",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Простой сторожевой таймер (Watchdog) \nдля отслеживания нормальной работы ПК.\nПригодится при необходимости получения уведомлений, если ПК завис или выключился.\n\n\nУстановка скрипта:\n\n1. Скачайте все файлы на компьютер.\n\n2. Создайте новый workflow в n8n, в правом верхнем углу нажмите import from file, выберите Watchdog_workflow.json\n\n3. Откройте двоным кликом ноду Setup и заполните поля: \ndelay - необходимо указать количество минут задержки проверки пингов от ПК. Должно составлять время периодичности пинга + 3 минуты (Стандартно пинг отправляется каждые 10 минут, поэтому в поле указано 13).\nBot_token - Введите Токен бота Телеграм, который будет отправлять вам сообщение при отключении ПК.\nTelegram_Chat_ID - Введите ID чата с этим ботом.\nError_message - имеет предустановленное сообщение об ошибке с указанием имени компьютера, который перестал пинговаться. Можно изменить на свое\n\n4. Запустите триггер Click for setup and test, чтобы сконфигурировать стартовую временную метку таймера и проверить доступность бота Телеграм.\n\n5.  Откройте двоным кликом ноду Webhook, перейдите во вкладку Production URL и скопируйте адрес вебхука.\n\n6. Активируйте workflow.\n\n7. На вашем ПК правым кликом на send_ping.vbs откройте контекстное меню и выберите \"Изменить\". В поле шага 2 - strURL = \"<SET_YOUR_WEBHOOK>\" замените <SET_YOUR_WEBHOOK> на ранее скопированный адрес вебхука из n8n. Сохраните файл.\n\n8. Запустите для установки задачи в Планировщике задач - Autostart_setup.bat \nНастройки: \nПо умолчанию пинги отправляются каждые 10 минут.\nДля изменения периода отправки пингов в шаге 3 необходимо изменить цифру в ключе /mo 10 команды установки задачи schtasks, а также скорректировать настройки ноды Setup в n8n.\n\n9. Если необходимо остановить сторожевой таймер - Запустите для удаления задачи из Планировщика задач Autostart_stop.bat.\n\nhttps://github.com/deja111vu/watchdog\n",
+        "height": 880,
+        "width": 672,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -288
+      ],
+      "id": "8bf531a7-c3c2-4822-bfee-fe03ed37f032",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## A simple Watchdog timer \nfor tracking the normal operation of a PC.\nIt is useful for receiving notifications if the PC freezes or shuts down.\n\nScript Installation\n\n1. Download all files to your computer.\n\n2. Create a new workflow in n8n. In the top right corner, click Import from file and select Watchdog_workflow.json.\n\n3. Double-click the Setup node and fill in the fields:\ndelay - You need to specify the number of minutes for the delay in checking for pings from the PC. This should be the ping frequency time + 3 minutes (The ping is sent every 10 minutes by default, so 13 is specified in the field).\nBot_token - Enter the Telegram bot token that will send you a message if the PC goes offline.\nTelegram_Chat_ID - Enter the ID of the chat with this bot.\nError_message - Has a pre-set error message indicating the name of the computer that stopped sending pings. You can change it to your own.\n\n4. Run the trigger Click for setup and test to configure the timer's starting timestamp and check the availability of the Telegram bot.\n\n5. Double-click the Webhook node, go to the Production URL tab, and copy the webhook address.\n\n6. Activate the workflow.\n\n7. On your PC, right-click on send_ping.vbs to open the context menu and select Edit. In the field for step 2 - strURL = \"<SET_YOUR_WEBHOOK>\", replace <SET_YOUR_WEBHOOK> with the webhook address you previously copied from n8n. Save the file.\n\n8. Run Autostart_setup.bat to install the task in the Task Scheduler.\nSettings: Pings are sent every 10 minutes by default.\nTo change the ping sending period, you must change the number in the /mo 10 key of the schtasks task installation command in step 8, and also adjust the settings of the Setup node in n8n.\n\n9. If you need to stop the watchdog timer, run Autostart_stop.bat to remove the task from the Task Scheduler.\n\nhttps://github.com/deja111vu/watchdog",
+        "height": 832,
+        "width": 688,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        -288
+      ],
+      "id": "2de0c174-445b-4602-8366-7334181d3e11",
+      "name": "Sticky Note5"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.stepukov.ru",
+            "user-agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 10.0; Win64; x64; Trident/7.0; .NET4.0C; .NET4.0E)",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate",
+            "accept-language": "ru,en-US;q=0.7,en;q=0.3",
+            "ua-cpu": "AMD64",
+            "x-forwarded-for": "185.237.239.219",
+            "x-forwarded-host": "n8n.stepukov.ru",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "969dbb33ac0e",
+            "x-real-ip": "185.237.239.219"
+          },
+          "params": {},
+          "query": {
+            "computer": "HOME-PC"
+          },
+          "body": {},
+          "webhookUrl": "https://n8n.stepukov.ru/webhook/watchdog",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Setup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Setup": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Click for setup and test": {
+      "main": [
+        [
+          {
+            "node": "Setup",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Timer Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timer Set": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Moscow",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 900,
+    "errorWorkflow": "lhtvPzP4yu3E9op0"
+  },
+  "versionId": "6f3c9807-7b55-416e-8b4e-b9deabe0ec13",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "134588cdbbc3509430915e7c63d3a1f718a23b1da499508d2eaaa6f051c2b8f9"
+  },
+  "id": "Svk0Fi6p7GH5YS75",
+  "tags": []
+}
